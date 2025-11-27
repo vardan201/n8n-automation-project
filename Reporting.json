@@ -1,0 +1,489 @@
+{
+  "name": "Reporting",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -512,
+        48
+      ],
+      "id": "156436f0-5597-44d6-a1bf-37fa9363104e",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1Dr2hZrdRNBrXjktERxbDkUbgEu139S5lb52JsdkBFEQ",
+          "mode": "list",
+          "cachedResultName": "test_data",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Dr2hZrdRNBrXjktERxbDkUbgEu139S5lb52JsdkBFEQ/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1850747972,
+          "mode": "list",
+          "cachedResultName": "ad_insights",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Dr2hZrdRNBrXjktERxbDkUbgEu139S5lb52JsdkBFEQ/edit#gid=1850747972"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -224,
+        -96
+      ],
+      "id": "b0192ff6-5162-4509-afc0-231ad550c981",
+      "name": "Get row(s) in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "B2Vh0wnMrdHKcQyE",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1Dr2hZrdRNBrXjktERxbDkUbgEu139S5lb52JsdkBFEQ",
+          "mode": "list",
+          "cachedResultName": "test_data",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Dr2hZrdRNBrXjktERxbDkUbgEu139S5lb52JsdkBFEQ/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1126929994,
+          "mode": "list",
+          "cachedResultName": "leads",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Dr2hZrdRNBrXjktERxbDkUbgEu139S5lb52JsdkBFEQ/edit#gid=1126929994"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -240,
+        160
+      ],
+      "id": "87bd7d10-5798-4787-8e29-629f58c73664",
+      "name": "Get row(s) in sheet1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "B2Vh0wnMrdHKcQyE",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const ONE_DAY_MS = 24 * 60 * 60 * 1000;\nconst now = new Date();\nconst since = new Date(now.getTime() - ONE_DAY_MS);\n\nfunction parseDate(val) {\n  if (!val) return null;\n  const d = new Date(val);\n  return isNaN(d) ? null : d;\n}\n\nfunction toNum(v) {\n  return v === \"\" || v == null ? 0 : Number(String(v).replace(/[^0-9.\\-]/g, \"\"));\n}\n\nconst rows = items.map(i => i.json);\n\nlet totalSpend = 0;\nlet totalClicks = 0;\nlet totalImpressions = 0;\n\nconst creativeStats = {};\n\nrows.forEach(r => {\n  const d = parseDate(r.Date);\n  if (!d || d < since || d > now) return;\n\n  const impressions = toNum(r.Impressions);\n  const clicks = toNum(r.Clicks);\n  const spend = toNum(r.Spend);\n  const creative = r.Creative || \"Unknown\";\n\n  totalSpend += spend;\n  totalClicks += clicks;\n  totalImpressions += impressions;\n\n  if (!creativeStats[creative]) creativeStats[creative] = {impr:0, clicks:0};\n  creativeStats[creative].impr += impressions;\n  creativeStats[creative].clicks += clicks;\n});\n\n// calculate best creative by CTR\nlet bestCreative = null;\nlet bestCTR = 0;\n\nObject.entries(creativeStats).forEach(([name, data]) => {\n  const ctr = data.impr ? (data.clicks / data.impr) * 100 : 0;\n  if (ctr > bestCTR) {\n    bestCTR = ctr;\n    bestCreative = name;\n  }\n});\n\nconst avgCTR = totalImpressions ? (totalClicks / totalImpressions) * 100 : 0;\n\nreturn [{\n  json: {\n    totalSpend: Math.round(totalSpend),\n    totalClicks,\n    totalImpressions,\n    avgCTR: Number(avgCTR.toFixed(2)),\n    bestCreative\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        48,
+        -96
+      ],
+      "id": "6f03c66d-f35c-42f3-89dd-c5d42933715e",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ===============================\n// LEADS PROCESSING (TODAY ONLY)\n// ===============================\n\n// Helper function to safely parse date\nfunction parseDate(d) {\n  if (!d) return null;\n  const dt = new Date(d);\n  return isNaN(dt) ? null : dt;\n}\n\n// Get today's date (YYYY-MM-DD)\nconst today = new Date().toISOString().split('T')[0];\n\n// Get leads rows from previous Google Sheets node\nconst leadRows = $input.all().map(item => item.json);\n\n// Filter only today's leads\nconst todayLeads = leadRows.filter(r => {\n  const d = parseDate(r.Date || r.date || r.created_at);\n  if (!d) return false;\n  return d.toISOString().startsWith(today);\n});\n\n// Calculate metrics\nconst totalLeads = todayLeads.length;\n\n// Area-wise aggregation\nconst areaMap = {};\n\ntodayLeads.forEach(r => {\n  const area = r.Area || r.area || \"Unknown\";\n  areaMap[area] = (areaMap[area] || 0) + 1;\n});\n\n// Find top area\nlet topArea = null;\nlet maxLeads = 0;\n\nfor (const area in areaMap) {\n  if (areaMap[area] > maxLeads) {\n    maxLeads = areaMap[area];\n    topArea = area;\n  }\n}\n\n// Final output\nreturn [{\n  json: {\n    date: today,\n    totalLeads,\n    topArea,\n    areaBreakdown: areaMap\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        32,
+        160
+      ],
+      "id": "ad27664c-6fda-4d93-99e6-41f30be7c8aa",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        320,
+        48
+      ],
+      "id": "9f8ea886-1237-4885-bfa9-95f45d5eee67",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ad = $input.all()[0].json;\nconst leads = $input.all()[1].json;\n\nreturn [{\n  json: {\n    date: leads.date,\n    totalLeads: leads.totalLeads,\n    topArea: leads.topArea,\n    totalSpend: ad.totalSpend,\n    totalClicks: ad.totalClicks,\n    totalImpressions: ad.totalImpressions,\n    avgCTR: ad.avgCTR,\n    avgCPL: leads.totalLeads > 0 \n      ? Math.round(ad.totalSpend / leads.totalLeads) \n      : 0,\n    bestCreative: ad.bestCreative\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        528,
+        48
+      ],
+      "id": "98088e26-9673-49dc-9798-cbd13ada99d2",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        560,
+        240
+      ],
+      "id": "fbc79ece-e526-4338-99d9-854a16c57164",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "AXJeBSW65Kzwksv2",
+          "name": "Google Gemini(PaLM) Api account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Using the following campaign performance data, generate a weekly strategic report in plain text suitable for conversion into PDF. Use clear headings, short paragraphs, bullet lists where appropriate, and keep it client-ready.\n\nDATA:\n{{ $json.date }}\n{{ $json.totalLeads }}\n{{ $json.topArea }}\n{{ $json.totalSpend }}\n{{ $json.totalClicks }}\n{{ $json.totalImpressions }}\n\n{{ $json.avgCPL }}\n{{ $json.avgCTR }}\n{{ $json.bestCreative }}\n\nRequired sections and order:\n1) Report title line (OneMeal Weekly Strategy Report) and the date range.\n2) PERFORMANCE SUMMARY — 3–5 short sentences (what happened this week; one-sentence verdict).\n3) KEY METRICS — one-line bullet list containing:\n   - Total leads: <number>\n   - Total spend: ₹<number>\n   - Avg CTR: <percentage>%\n   - Avg CPL: ₹<number>\n   - Total clicks: <number>\n   - Total impressions: <number>\n4) TOP PERFORMING AUDIENCES — list top 3 areas with 1-line insight each (leads + CPL).\n5) CREATIVE LEARNINGS — 3 short bullets: what worked, what didn’t, quick suggestion.\n6) 14-DAY EXPERIMENT PLAN — 3 actionable experiments, each with objective and expected impact (one sentence each).\n7) RECOMMENDATION (one short paragraph) and URGENCY FLAG if any metric needs immediate attention.\n\nRules:\n- Base everything on the provided DATA. If a field is missing, say “Data not available”.\n- Do not invent numbers not present in the data.\n- Keep tone professional and concise. Use no more than ~450 words.\n\nOutput: Plain text only (no JSON, no markdown).\n",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        736,
+        48
+      ],
+      "id": "9696f489-4edc-4456-8277-241e02b39624",
+      "name": "ai"
+    },
+    {
+      "parameters": {
+        "chatId": "6470977260",
+        "text": "=📊 Daily Report - {{ $('Code in JavaScript2').item.json.date }}━━━━━━━━━━━━━━━━━━━━ 👥 Leads: {{ $('Code in JavaScript2').item.json.totalLeads }} \n💰 Spend: ₹{{ $('Code in JavaScript2').item.json.totalSpend }}\n\n🎯 CTR: {{ $('Code in JavaScript2').item.json.avgCTR }}% 💸 \nCPL: ₹{{ $('Code in JavaScript2').item.json.avgCPL }} \n⚡ Top Area: {{ $('Code in JavaScript2').item.json.topArea }} \n🎨 Best Creative: {{ $('Code in JavaScript2').item.json.bestCreative }}                      🔗 Dashboard: https://lookerstudio.google.com/u/0/reporting/37b4f9e1-5159-496f-8311-b19db43fdc53/page/FuKgF",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1088,
+        48
+      ],
+      "id": "96c91e5d-c611-4222-bf3c-8bd4f56253ba",
+      "name": "Send a text message",
+      "webhookId": "5f34b63d-b43a-4c06-aea3-8cda3cbfc011",
+      "credentials": {
+        "telegramApi": {
+          "id": "cUcg0p8eAMWbyKPp",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const reportText = $node[\"ai\"].json.output;\n\nreturn [{\n  html: `\n  <html>\n    <head>\n      <style>\n        body { font-family: Arial, sans-serif; padding: 30px; line-height: 1.6; }\n        h1 { color: #1a2a3a; }\n        pre { white-space: pre-wrap; }\n      </style>\n    </head>\n    <body>\n      <h1>OneMeal Weekly Strategy Report</h1>\n      <pre>${reportText}</pre>\n    </body>\n  </html>\n  `\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1088,
+        208
+      ],
+      "id": "f5740c77-bd61-4d8b-afc5-337434c50615",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "html_content": "={{ $json.html }}",
+        "response_format_html": "png"
+      },
+      "type": "n8n-nodes-htmlcsstopdf.htmlcsstopdf",
+      "typeVersion": 1,
+      "position": [
+        1296,
+        208
+      ],
+      "id": "6a70507f-1517-440b-8c88-04b8aaad096b",
+      "name": "HTML to PDF",
+      "credentials": {
+        "htmlcsstopdfApi": {
+          "id": "8Ip2Dv6UXBp3cMin",
+          "name": "HTML to PDF account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "report",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "root",
+          "cachedResultName": "/ (Root folder)"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1824,
+        192
+      ],
+      "id": "d24fb0b9-3d6a-4bfb-a4ab-d253ac2d841e",
+      "name": "Upload file"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.pdf_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1552,
+        192
+      ],
+      "id": "5b1c190a-877e-4397-99b2-cdceca6b4fbb",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1Dr2hZrdRNBrXjktERxbDkUbgEu139S5lb52JsdkBFEQ",
+          "mode": "list",
+          "cachedResultName": "test_data",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Dr2hZrdRNBrXjktERxbDkUbgEu139S5lb52JsdkBFEQ/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 400598940,
+          "mode": "list",
+          "cachedResultName": "for_refresh",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Dr2hZrdRNBrXjktERxbDkUbgEu139S5lb52JsdkBFEQ/edit#gid=400598940"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "meta": "refresh"
+          },
+          "matchingColumns": [
+            "meta"
+          ],
+          "schema": [
+            {
+              "id": "meta",
+              "displayName": "meta",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1296,
+        48
+      ],
+      "id": "516f20c0-aec3-4552-becd-7a90fa6acc03",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "B2Vh0wnMrdHKcQyE",
+          "name": "Google Sheets account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get row(s) in sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "ai",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "ai",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ai": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a text message": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "HTML to PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTML to PDF": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload file": {
+      "main": [
+        []
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "3cb90fa0-1e27-4814-99f9-3aa97cb5a278",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c05dc335b287442444329fc23db17966f136b59b87500a9d26e6bd38efdd37ce"
+  },
+  "id": "0Yv8XBdlSXKnZ6Cm",
+  "tags": []
+}
